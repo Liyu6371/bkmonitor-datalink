@@ -57,6 +57,7 @@ func (s *SysInodeTest) TestForLinux() {
 						"hostname":           "rbtnode1-new",
 						"device_name":        "/dev/vda1",
 						"bk_cmdb_level":      "[{\"a\":1},{\"b\":2}]",
+						"mount_point":        "/",
 					},
 					"metrics": map[string]interface{}{
 						"total":  3276800.0,
@@ -104,6 +105,7 @@ func (s *SysInodeTest) TestForWindows() {
 					"hostname":           "10_0_1_9",
 					"device_name":        "C:",
 					"bk_cmdb_level":      "null",
+					"mount_point":        "C:",
 				},
 				"metrics": map[string]interface{}{
 					"total":  0.0,
