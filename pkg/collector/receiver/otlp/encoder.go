@@ -56,7 +56,9 @@ func (jsonEncoder) UnmarshalTraces(buf []byte) (ptrace.Traces, error) {
 	if err := req.UnmarshalJSON(buf); err != nil {
 		return ptrace.Traces{}, err
 	}
-	return req.Traces(), nil
+	traces := req.Traces()
+	TracePatch(traces)
+	return traces, nil
 }
 
 func (jsonEncoder) UnmarshalMetrics(buf []byte) (pmetric.Metrics, error) {
@@ -91,7 +93,9 @@ func (pbEncoder) UnmarshalTraces(buf []byte) (ptrace.Traces, error) {
 	if err := req.UnmarshalProto(buf); err != nil {
 		return ptrace.Traces{}, err
 	}
-	return req.Traces(), nil
+	traces := req.Traces()
+	TracePatch(traces)
+	return traces, nil
 }
 
 func (pbEncoder) UnmarshalMetrics(buf []byte) (pmetric.Metrics, error) {

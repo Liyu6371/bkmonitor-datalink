@@ -54,6 +54,7 @@ func (s tracesService) Export(ctx context.Context, req ptraceotlp.Request) (ptra
 	start := time.Now()
 	logger.Debugf("grpc request: service=traces, remoteAddr=%v", ip)
 	traces := req.Traces()
+	TracePatch(traces)
 	r := &define.Record{
 		RequestType:   define.RequestGrpc,
 		RequestClient: define.RequestClient{IP: ip},
