@@ -2,6 +2,8 @@ package otlp
 
 import (
 	"encoding/json"
+	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/TencentBlueKing/bkmonitor-datalink/pkg/utils/logger"
@@ -20,24 +22,40 @@ func TracePatch(trace ptrace.Traces) {
 		for j := 0; j < scopeSpans.Len(); j++ {
 			spans := scopeSpans.At(j).Spans()
 			for k := 0; k < spans.Len(); k++ {
-				spanKind := spans.At(k).Kind()
-				spanAttr := spans.At(k).Attributes()
-				spanType := decideSpanType(spanAttr)
+				span := spans.At(k)
+				spanType := decideSpanType(span.Attributes())
+				logger.Errorf("span traceId is %s", span.TraceID().HexString())
+				logger.Errorf("span spanId is %s", span.SpanID().HexString())
+				logger.Errorf("spanType is %s", spanType)
+				logger.Errorf("span kind is %d", span.Kind())
 				switch spanType {
 				case "http":
-					httpSpanPatch(spanAttr, spanKind)
+					logger.Errorf("Before http span name: %s", span.Name())
+					httpSpanNamePatch(span, span.Kind())
+					logger.Errorf("After http span name: %s", span.Name())
+					a, _ := json.Marshal(span.Attributes().AsRaw())
+					logger.Errorf("Before http span attr: %s", string(a))
+					httpSpanPatch(span.Attributes(), span.Kind())
+					b, _ := json.Marshal(span.Attributes().AsRaw())
+					logger.Errorf("After http span attr: %s", string(b))
 				case "db":
-					dbSpanPatch(spanAttr, spanKind)
+					a, _ := json.Marshal(span.Attributes().AsRaw())
+					logger.Errorf("Before db span attr: %s", string(a))
+					dbSpanPatch(span.Attributes(), span.Kind())
+					b, _ := json.Marshal(span.Attributes().AsRaw())
+					logger.Errorf("After db span attr: %s", string(b))
 				case "messaging":
-					messagingSpanPatch(spanAttr, spanKind)
+					a, _ := json.Marshal(span.Attributes().AsRaw())
+					logger.Errorf("Before messaging span attr: %s", string(a))
+					messagingSpanPatch(span.Attributes(), span.Kind())
+					b, _ := json.Marshal(span.Attributes().AsRaw())
+					logger.Errorf("After messaging span attr: %s", string(b))
 				default:
 					continue
 				}
-
 			}
 		}
 	}
-
 }
 
 // decideSpanType 通过 Span 的属性来决定 Span 的类型
@@ -95,6 +113,7 @@ func check(attrMap map[string]interface{}, checkKeys []string) bool {
 // httpSpanPatch 处理 http 类型的 span 补丁
 func httpSpanPatch(attribute pcommon.Map, kind ptrace.SpanKind) {
 	httpReflectMap := map[string][]string{
+		"url.path":                  {"http.target"},
 		"http.request.method":       {"http.method"},
 		"http.response.status_code": {"http.status_code"},
 		"url.full":                  {"http.url"},
@@ -108,26 +127,94 @@ func httpSpanPatch(attribute pcommon.Map, kind ptrace.SpanKind) {
 	transformAttr(httpReflectMap, attribute)
 	//  kind = 2
 	if kind == ptrace.SpanKindServer {
-		if v, ok := attribute.Get("server.address"); ok {
-			attribute.InsertString("net.host.name", v.AsString())
-			attribute.InsertString("net.host.ip", v.AsString())
-			attribute.InsertString("net.host.port", v.AsString())
-		}
-		if t, ok := attribute.Get("server.port"); ok {
-			attribute.UpdateInt("net.host.port", t.IntVal())
-		}
-	}
-	//  kind = 3
-	if kind == ptrace.SpanKindClient {
-		if v, ok := attribute.Get("server.address"); ok {
-			attribute.InsertString("net.peer.name", v.AsString())
+		var (
+			clientAddr string
+			serverAddr string
+			clientPort int
+			serverPort int
+		)
+		if v, ok := attribute.Get("client.address"); ok {
 			attribute.InsertString("net.peer.ip", v.AsString())
-			attribute.InsertString("net.peer.port", v.AsString())
+			clientAddr = v.AsString()
 		}
-		if t, ok := attribute.Get("server.port"); ok {
-			attribute.UpdateInt("net.peer.port", t.IntVal())
+		if v, ok := attribute.Get("client.port"); ok {
+			attribute.InsertInt("net.peer.port", v.IntVal())
+			clientPort = int(v.IntVal())
+		}
+		if clientAddr != "" && clientPort != 0 {
+			attribute.InsertString("net.peer.name", fmt.Sprintf("%s:%d", clientAddr, clientPort))
+
 		}
 
+		if v, ok := attribute.Get("server.address"); ok {
+			attribute.InsertString("net.host.ip", v.AsString())
+			serverAddr = v.AsString()
+		}
+		if v, ok := attribute.Get("server.port"); ok {
+			attribute.InsertInt("net.host.port", v.IntVal())
+			serverPort = int(v.IntVal())
+		}
+		if serverAddr != "" && serverPort != 0 {
+			attribute.InsertString("net.host.name", fmt.Sprintf("%s:%d", serverAddr, serverPort))
+		}
+	}
+
+	//  kind = 3
+	if kind == ptrace.SpanKindClient {
+		var (
+			clientAddr string
+			serverAddr string
+			clientPort int
+			serverPort int
+		)
+
+		if v, ok := attribute.Get("server.address"); ok {
+			attribute.InsertString("net.peer.ip", v.AsString())
+			serverAddr = v.AsString()
+		}
+		if t, ok := attribute.Get("server.port"); ok {
+			attribute.InsertInt("net.peer.port", t.IntVal())
+			serverPort = int(t.IntVal())
+		}
+		if serverAddr != "" && serverPort != 0 {
+			attribute.InsertString("net.peer.name", fmt.Sprintf("%s:%d", serverAddr, serverPort))
+		}
+
+		if v, ok := attribute.Get("client.address"); ok {
+			attribute.InsertString("net.host.ip", v.AsString())
+			clientAddr = v.AsString()
+		}
+		if v, ok := attribute.Get("client.port"); ok {
+			attribute.InsertInt("net.host.port", v.IntVal())
+			clientPort = int(v.IntVal())
+		}
+		if clientAddr != "" && clientPort != 0 {
+			attribute.InsertString("net.host.name", fmt.Sprintf("%s:%d", clientAddr, clientPort))
+		}
+	}
+}
+
+// httpSpanNamePatch 处理 http 类型的 spanName 补丁
+func httpSpanNamePatch(span ptrace.Span, kind ptrace.SpanKind) {
+	// 目前只处理 span kind = 3 的情况
+	if kind != ptrace.SpanKindClient {
+		return
+	}
+	spAttr := span.Attributes()
+	v, ok := spAttr.Get("url.full")
+	if !ok {
+		logger.Debugf("httpSpanNamePatch url.full not found")
+		return
+	}
+	urlFull := v.AsString()
+	u, err := url.Parse(urlFull)
+	if err != nil {
+		logger.Debugf("httpSpanNamePatch url parse error %s", err)
+		return
+	}
+	if u.Path != "" {
+		span.SetName(u.Path)
+		return
 	}
 }
 
@@ -162,21 +249,45 @@ func dbSpanPatch(attribute pcommon.Map, kind ptrace.SpanKind) {
 		"db.query.text":        {"db.statement"},
 		"db.operation.name":    {"db.operation"},
 		"db.collection.name":   {"db.sql.table"},
-		"network.peer.address": {"net.sock.peer.addr"},
-		"network.peer.port":    {"net.sock.peer.port"},
+		"network.peer.address": {"net.sock.peer.addr", "server.address"},
+		"network.peer.port":    {"net.sock.peer.port", "server.port"},
 	}
 	transformAttr(dbReflectMap, attribute)
 
 	if kind == ptrace.SpanKindClient {
+		var (
+			serverAddr string
+			clientAddr string
+			serverPort int
+			clientPort int
+		)
+
 		if v, ok := attribute.Get("server.address"); ok {
-			attribute.InsertString("net.peer.name", v.AsString())
-			attribute.InsertString("net.peer.port", v.AsString())
+			attribute.InsertString("net.peer.ip", v.AsString())
+			serverAddr = v.AsString()
 		}
+
 		if v, ok := attribute.Get("server.port"); ok {
-			attribute.UpdateInt("net.peer.port", v.IntVal())
+			attribute.InsertInt("net.peer.port", v.IntVal())
+			serverPort = int(v.IntVal())
+		}
+		if serverAddr != "" && serverPort != 0 {
+			attribute.InsertString("net.peer.name", fmt.Sprintf("%s:%d", serverAddr, serverPort))
+		}
+
+		if v, ok := attribute.Get("client.address"); ok {
+			attribute.InsertString("net.host.ip", v.AsString())
+			clientAddr = v.AsString()
+		}
+
+		if v, ok := attribute.Get("client.port"); ok {
+			attribute.InsertInt("net.host.port", v.IntVal())
+			clientPort = int(v.IntVal())
+		}
+		if clientAddr != "" && clientPort != 0 {
+			attribute.InsertString("net.host.name", fmt.Sprintf("%s:%d", clientAddr, clientPort))
 		}
 	}
-
 }
 
 func messagingSpanPatch(attribute pcommon.Map, kind ptrace.SpanKind) {
