@@ -24,32 +24,22 @@ func TracePatch(trace ptrace.Traces) {
 			for k := 0; k < spans.Len(); k++ {
 				span := spans.At(k)
 				spanType := decideSpanType(span.Attributes())
-				logger.Errorf("span traceId is %s", span.TraceID().HexString())
-				logger.Errorf("span spanId is %s", span.SpanID().HexString())
-				logger.Errorf("spanType is %s", spanType)
-				logger.Errorf("span kind is %d", span.Kind())
+				logger.Debugf("span TraceId %s, SpanId %s, SpanType %s, SpanKind %d", span.TraceID().HexString(),
+					span.SpanID().HexString(), spanType, span.Kind())
 				switch spanType {
 				case "http":
-					logger.Errorf("Before http span name: %s", span.Name())
 					httpSpanNamePatch(span, span.Kind())
-					logger.Errorf("After http span name: %s", span.Name())
-					a, _ := json.Marshal(span.Attributes().AsRaw())
-					logger.Errorf("Before http span attr: %s", string(a))
 					httpSpanPatch(span.Attributes(), span.Kind())
-					b, _ := json.Marshal(span.Attributes().AsRaw())
-					logger.Errorf("After http span attr: %s", string(b))
+					a, _ := json.Marshal(span.Attributes().AsRaw())
+					logger.Errorf("After http span attr: %s", string(a))
 				case "db":
-					a, _ := json.Marshal(span.Attributes().AsRaw())
-					logger.Errorf("Before db span attr: %s", string(a))
 					dbSpanPatch(span.Attributes(), span.Kind())
-					b, _ := json.Marshal(span.Attributes().AsRaw())
-					logger.Errorf("After db span attr: %s", string(b))
-				case "messaging":
 					a, _ := json.Marshal(span.Attributes().AsRaw())
-					logger.Errorf("Before messaging span attr: %s", string(a))
+					logger.Errorf("After db span attr: %s", string(a))
+				case "messaging":
 					messagingSpanPatch(span.Attributes(), span.Kind())
-					b, _ := json.Marshal(span.Attributes().AsRaw())
-					logger.Errorf("After messaging span attr: %s", string(b))
+					a, _ := json.Marshal(span.Attributes().AsRaw())
+					logger.Errorf("After messaging span attr: %s", string(a))
 				default:
 					continue
 				}
@@ -203,13 +193,13 @@ func httpSpanNamePatch(span ptrace.Span, kind ptrace.SpanKind) {
 	spAttr := span.Attributes()
 	v, ok := spAttr.Get("url.full")
 	if !ok {
-		logger.Debugf("httpSpanNamePatch url.full not found")
+		logger.Error("httpSpanNamePatch url.full not found")
 		return
 	}
 	urlFull := v.AsString()
 	u, err := url.Parse(urlFull)
 	if err != nil {
-		logger.Debugf("httpSpanNamePatch url parse error %s", err)
+		logger.Errorf("httpSpanNamePatch url parse error %s", err)
 		return
 	}
 	if u.Path != "" {
@@ -228,14 +218,12 @@ func dbSpanPatch(attribute pcommon.Map, kind ptrace.SpanKind) {
 		if strings.HasPrefix(k, dbSpecialKey) {
 			val, ok := attribute.Get(k)
 			if ok {
-				logger.Debugf("dbSpanPatch key is %s, val is %s", k, val.StringVal())
 				values = append(values, val.StringVal())
 			}
 		}
 	}
 
 	if len(values) > 0 {
-		logger.Debugf("dbSpanPatch values is %s", values)
 		if bytesData, err := json.Marshal(values); err == nil {
 			attribute.InsertMBytes("db.sql.parameters", bytesData)
 		} else {
