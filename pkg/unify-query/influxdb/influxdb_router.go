@@ -150,6 +150,12 @@ func (r *Router) Ping(ctx context.Context, timeout time.Duration, pingCount int)
 				log.Warnf(ctx, "unable to NewRequest, addr:%s, error: %s", addr, err)
 				continue
 			}
+
+			// 对携带认证信息的实例进行处理
+			if v.Username != "" && v.Password != "" {
+				req.SetBasicAuth(v.Username, v.Password)
+			}
+
 			resp, err := clint.Do(req)
 			if err != nil {
 				log.Warnf(ctx, "do ping failed, error: %s", err)
