@@ -1040,6 +1040,12 @@ func (b *Backend) Ping(timeout time.Duration) (time.Duration, string, error) {
 		req.URL.RawQuery = params.Encode()
 	}
 
+	// 增加认证配置，支持开启了 ping-auth-enabled 的 Influxdb 实例
+	err = b.auth.SetAuth(req)
+	if err != nil {
+		flowLog.Errorf("authorization header set failed,but still send message to backend,error:%s", err)
+	}
+
 	resp, err := b.client.Do(req)
 	if err != nil {
 		flowLog.Errorf("do ping failed,error:%s", err)

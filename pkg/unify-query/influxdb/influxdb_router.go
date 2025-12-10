@@ -137,6 +137,10 @@ func (r *Router) Ping(ctx context.Context, timeout time.Duration, pingCount int)
 			if err != nil {
 				continue
 			}
+			// 针对携带了用户名密码的进行 basic auth 鉴权
+			if v.Username != "" && v.Password != "" {
+				req.SetBasicAuth(v.Username, v.Password)
+			}
 			resp, err := clint.Do(req)
 			if err != nil {
 				continue
